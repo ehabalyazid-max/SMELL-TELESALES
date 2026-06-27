@@ -1997,6 +1997,8 @@ const firebaseConfig = {
 let db = null;
 let firebaseReady = false;
 let _unsubscribe = null;
+let _agentsUnsubscribe = null;
+let _ordersUnsubscribe = null;
 let _isDeleting  = false;
 
 function setFbStatus(icon, text, bg, col){
@@ -2007,6 +2009,14 @@ function setFbStatus(icon, text, bg, col){
   if(el){  el.textContent=icon+' '+text; el.style.cssText=css; }
   if(inl){ inl.textContent=icon+' '+text; inl.style.color=col; }
   if(sb)   sb.style.display='flex';
+}
+
+function fbErrText(err, fallback){
+  var raw = ((err && (err.code || err.message || err.name)) || '').toString().toLowerCase();
+  if(raw.indexOf('resource-exhausted')>-1 || raw.indexOf('quota')>-1) return 'تم تجاوز حصة Firebase';
+  if(raw.indexOf('permission-denied')>-1 || raw.indexOf('permission')>-1) return 'صلاحيات Firebase مرفوضة';
+  if(raw.indexOf('unavailable')>-1 || raw.indexOf('timeout')>-1) return 'تعذر الاتصال بـ Firebase';
+  return fallback || 'خطأ Firebase';
 }
 
 // ── مصدر البيانات الوحيد: Firebase ──
@@ -2082,7 +2092,7 @@ function startListener(){
     }
   }, (err)=>{
     console.warn('onSnapshot error:', err);
-    if(window.setFbStatusUI) window.setFbStatusUI('🔴','انقطع الاتصال السحابي','rgba(239,68,68,.18)','#ef4444');
+    if(window.setFbStatusUI) window.setFbStatusUI('🔴',fbErrText(err,'انقطع الاتصال السحابي'),'rgba(239,68,68,.18)','#ef4444');
     if(window.toast) window.toast('⚠️ انقطع الاتصال بـ Firebase', true);
   });
 }
@@ -2107,7 +2117,7 @@ if(fbConfigured){
       if(window._listenOrders) window._listenOrders();
       if(window._listenCustomers) window._listenCustomers();
     }).catch(e=>{
-      setFbStatus('🔴','الخدمة السحابية غير متصلة','rgba(239,68,68,.18)','#ef4444');
+      setFbStatus('🔴',fbErrText(e,'الخدمة السحابية غير متصلة'),'rgba(239,68,68,.18)','#ef4444');
       if(window.toast) setTimeout(function(){ window.toast('❌ فشل الاتصال بـ Firebase — الوضع المحلي', true); }, 500);
     });
   }catch(e){
@@ -2146,17 +2156,21 @@ window._loadAgentsFromFirebase = async function(){
 
 window._listenAgents = function(){
   if(!db||!firebaseReady) return;
+  if(_agentsUnsubscribe) return;
   try{
     import('https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js').then(({onSnapshot:os, doc})=>{
-      os(doc(db,'_config','agents'), (snap)=>{
+      _agentsUnsubscribe = os(doc(db,'_config','agents'), (snap)=>{
         if(!snap.exists()) return;
         var agents = snap.data().list||[];
         localStorage.setItem('smAgents', JSON.stringify(agents));
         if(window.fillAgentSelect) window.fillAgentSelect();
         if(window.initSels) window.initSels();
+      }, (err)=>{
+        console.warn('agents listener error:', err);
+        _agentsUnsubscribe = null;
       });
     });
-  }catch(e){}
+  }catch(e){ _agentsUnsubscribe = null; }
 };
 
 window._saveToFirebase = async function(phone, customerName, logEntry){
@@ -2180,7 +2194,7 @@ window._saveToFirebase = async function(phone, customerName, logEntry){
   }catch(e){
     console.warn('save error:',e);
     if(window.toast) window.toast('❌ خطأ في الحفظ السحابي!', true);
-    if(window.setFbStatusUI) window.setFbStatusUI('🔴','خطأ في الحفظ','rgba(239,68,68,.18)','#ef4444');
+    if(window.setFbStatusUI) window.setFbStatusUI('🔴',fbErrText(e,'خطأ في الحفظ'),'rgba(239,68,68,.18)','#ef4444');
   }
 };
 
@@ -2263,7 +2277,7 @@ window._retryFirebaseConnection = async function(){
     setFbStatus('🟢','عاد الاتصال بالسحابة','rgba(16,185,129,.18)','#10b981');
     return true;
   }catch(e){
-    setFbStatus('🔴','ما زال النظام دون إنترنت','rgba(239,68,68,.18)','#ef4444');
+    setFbStatus('🔴',fbErrText(e,'ما زال النظام دون إنترنت'),'rgba(239,68,68,.18)','#ef4444');
     return false;
   }
 };
@@ -2328,9 +2342,10 @@ window._softDeleteOrderInFirebase = async function(orderId){
 
 window._listenOrders = function(){
   if(!db||!firebaseReady) return;
+  if(_ordersUnsubscribe) return;
   try{
     import('https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js').then(({onSnapshot:os, collection: col})=>{
-      os(col(db,'whatsapp_orders'), (snap)=>{
+      _ordersUnsubscribe = os(col(db,'whatsapp_orders'), (snap)=>{
         var cloudOrders = [];
         var cloudIds = new Set();
         snap.forEach(function(d){
@@ -2355,9 +2370,12 @@ window._listenOrders = function(){
         LAST_ORDERS_SYNC = new Date().toISOString();
         if(window.renderRegionDash) window.renderRegionDash();
         if(window.renderHealthScreen) window.renderHealthScreen();
+      }, (err)=>{
+        console.warn('orders listener error:', err);
+        _ordersUnsubscribe = null;
       });
     });
-  }catch(e){}
+  }catch(e){ _ordersUnsubscribe = null; }
 };
 
 </script>
@@ -2418,6 +2436,7 @@ var LAST_CUSTOMERS_SYNC = '';
 var LAST_LOGS_SYNC = '';
 var LAST_ORDERS_SYNC = '';
 var _customersUnsubscribe = null;
+var _customersListenStarting = false;
 
 function persistCoreState(){
   try{
@@ -2679,14 +2698,23 @@ function applyCustomersSnapshot(snapshot){
 }
 window._listenCustomers = function(){
   if(!window._db || !window._fbReady) return;
-  if(_customersUnsubscribe){ _customersUnsubscribe(); _customersUnsubscribe=null; }
+  if(_customersUnsubscribe || _customersListenStarting) return;
+  _customersListenStarting = true;
   import('https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js').then(function(mod){
     _customersUnsubscribe = mod.onSnapshot(mod.collection(window._db,'customers_master'), function(snapshot){
       applyCustomersSnapshot(snapshot);
       LAST_CUSTOMERS_SYNC = new Date().toISOString();
       if(window.renderHealthScreen) renderHealthScreen();
-    }, function(err){ console.warn('customers listener error', err); });
-  }).catch(function(e){ console.warn('listen customers import error', e); });
+    }, function(err){
+      console.warn('customers listener error', err);
+      if(_customersUnsubscribe){ try{ _customersUnsubscribe(); }catch(e){} }
+      _customersUnsubscribe = null;
+    });
+    _customersListenStarting = false;
+  }).catch(function(e){
+    _customersListenStarting = false;
+    console.warn('listen customers import error', e);
+  });
 };
 window._loadCustomersOnce = async function(){
   if(!window._db || !window._fbReady) return false;
@@ -2882,6 +2910,7 @@ window.addEventListener('load', function() {
 });
 
 
+var _liveClockTimer = null;
 function startLiveClock() {
   function update() {
     var el = document.getElementById('live-clock');
@@ -2893,7 +2922,8 @@ function startLiveClock() {
     el.innerHTML = '<span style="color:var(--gr)">●</span> 📅 ' + dateStr + ' • ⏰ ' + timeStr;
   }
   update();
-  setInterval(update, 5000);
+  if(_liveClockTimer) return;
+  _liveClockTimer = setInterval(update, 5000);
 }
 
 window.sendQuickAI = function(query) {
@@ -2976,7 +3006,7 @@ function closeSB(){
 
 // ════ NAV ════
 var TT={home:'📊 الرئيسية',health:'🩺 فحص النظام',unsold:'🎯 أسماء العملاء',calls:'📞 سجل الاتصالات',calendar:'🗓️ التقويم',rep:'📋 التقارير',orders:'💬 أوامر الواتساب'};
-var PAGES = ['home','health','unsold','calls','calendar','rep','orders'];
+var PAGES = ['home','unsold','calls','calendar','rep','orders'];
 var curPage = 'home';
 
 function nav(id,el){
@@ -4072,7 +4102,6 @@ var RDEFS=[
   {id:'nosale',  ico:'📵',nm:'لم يردوا',                 desc:'العملاء الذين لم يردوا — لإعادة الاتصال',    cnt:function(){return getLogs().filter(function(l){return l.res==='no_answer';}).length;}},
   {id:'callback',ico:'🔔',nm:'قائمة المعاودة',           desc:'المجدولة معاودة اتصالهم',                    cnt:function(){return Object.values(cstat).filter(function(v){return v==='callback';}).length;}},
   {id:'interested',ico:'😊',nm:'المهتمون',               desc:'أولوية للإغلاق — مهتمون ولم يشتروا بعد',    cnt:function(){return Object.values(cstat).filter(function(v){return v==='interested';}).length;}},
-  {id:'monthly', ico:'📅',nm:'المبيعات الشهرية',         desc:'إحصائيات المبيعات والصفقات لكل شهر',         cnt:function(){return Object.keys(ST.monthly).length;}},
   {id:'full',    ico:'📊',nm:'تقرير شامل',               desc:'جميع السجلات مع كل التفاصيل',                cnt:function(){return ALL.length;}},
   {id:'monthly', ico:'📅',nm:'المبيعات الشهرية',        desc:'تقرير المبيعات الشهرية وتوزيع الصفقات',      cnt:function(){return getLogs().filter(function(l){return l.res==='sold';}).length;}},
   {id:'rg_all',     ico:'📋',nm:'تقرير المناطق المجمع',     desc:'أوامر الواتساب لكل المناطق',                  cnt:function(){return getActiveOrdersData().length;}},
@@ -5168,12 +5197,12 @@ var WO_REGIONS = {
 };
 
 var WO_STATUS = {
-  new: {lbl:'جديد',ico:'🆕',cls:'wo-s-new'},
-  interested: {lbl:'مهتم',ico:'😊',cls:'wo-s-interested'},
-  not_interested: {lbl:'غير مهتم',ico:'😐',cls:'wo-s-not_interested'},
-  inquiry: {lbl:'استفسار',ico:'❓',cls:'wo-s-inquiry'},
-  callback: {lbl:'معاودة',ico:'🔔',cls:'wo-s-callback'},
-  done: {lbl:'تم الإنهاء',ico:'✅',cls:'wo-s-done'}
+  new: {lbl:'جديد',ico:'🆕',cls:'wo-s-new',col:'#3b82f6'},
+  interested: {lbl:'مهتم',ico:'😊',cls:'wo-s-interested',col:'#10b981'},
+  not_interested: {lbl:'غير مهتم',ico:'😐',cls:'wo-s-not_interested',col:'#ef4444'},
+  inquiry: {lbl:'استفسار',ico:'❓',cls:'wo-s-inquiry',col:'#f59e0b'},
+  callback: {lbl:'معاودة',ico:'🔔',cls:'wo-s-callback',col:'#06b6d4'},
+  done: {lbl:'تم الإنهاء',ico:'✅',cls:'wo-s-done',col:'#8b5cf6'}
 };
 
 function woSetRegion(region, el){
@@ -5214,7 +5243,7 @@ function woRender(){
       + '<div class="wo-actions">'
       + '<a href="https://wa.me/'+waPhone+'" target="_blank" class="btn bsm" style="background:linear-gradient(135deg,#25d366,#128c7e);color:#fff;padding:6px 12px;font-size:11px;font-weight:800;border-radius:10px;text-decoration:none;display:inline-flex;align-items:center;gap:4px">💬 واتساب</a>'
       + '<button class="btn bsm" onclick="woEditOrder(\''+o.id+'\')" style="background:rgba(59,130, 246, 0.2);border:1px solid rgba(59,130,246,0.4);color:#93c5fd;padding:6px 12px;font-size:11px;font-weight:800;border-radius:10px">✏️ تعديل</button>'
-      + (IS_ADMIN ? '<button class="btn bsm" onclick="openSupervisorMod(\''+o.id+'\')" style="background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.5);color:#d8b4fe;padding:6px 12px;font-size:11px;font-weight:900;border-radius:10px">🔍 نتيجة المتابعة</button>' : '')
+      + '<button class="btn bsm" onclick="openSupervisorMod(\''+o.id+'\')" style="background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.5);color:#d8b4fe;padding:6px 12px;font-size:11px;font-weight:900;border-radius:10px">🔍 نتيجة المتابعة</button>'
       + '<button class="btn bsm" onclick="openTransferMod(\''+o.id+'\')" style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);color:#fcd34d;padding:6px 12px;font-size:11px;font-weight:800;border-radius:10px">🔄 تحويل</button>'
       + (IS_ADMIN ? '<button class="btn bsm" onclick="woDeleteOrder(\''+o.id+'\')" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;padding:6px 12px;font-size:11px;font-weight:800;border-radius:10px">🗑️ حذف</button>' : '')
       + (o.supervisorFollowups && o.supervisorFollowups.length ? '<div style="margin-top:10px;padding:8px 12px;background:rgba(139,92,246,0.1);border-radius:10px;border:1px solid rgba(139,92,246,0.25)"><div style="font-size:10px;font-weight:800;color:#d8b4fe;margin-bottom:4px">🔍 آخر متابعة مشرف</div><div style="font-size:12px;color:var(--t1);font-weight:600">'+esc(o.supervisorFollowups[o.supervisorFollowups.length-1].result||'')+'</div><div style="font-size:10px;color:var(--t3);margin-top:2px">'+fd(o.supervisorFollowups[o.supervisorFollowups.length-1].date)+(o.supervisorFollowups[o.supervisorFollowups.length-1].supervisorName?' — 👤 '+esc(o.supervisorFollowups[o.supervisorFollowups.length-1].supervisorName):'')+'</div></div>' : '')
@@ -5388,10 +5417,7 @@ window.woRender = woRender;
 
 
 </script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0d886fdfc29e214',t:'MTc4MTc2NzE4Mw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();
-
-// ════ SUPERVISOR FOLLOW-UP FUNCTIONS ════
+<script>// ════ SUPERVISOR FOLLOW-UP FUNCTIONS ════
 var _supOrderId = null;
 
 function openSupervisorMod(orderId){
@@ -5622,6 +5648,7 @@ function openTransferFromModal(targetRegion){
 }
 
 
-</script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0d8d4e53e3661ee',t:'MTc4MTc3MDM3Mw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0ea3f8879dfe280',t:'MTc4MTk1Mjk5OQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a12435c1dee7ecd3',t:'MTc4MjU2MDc3Mw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
