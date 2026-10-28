@@ -1287,6 +1287,23 @@ a.rg-card,a.rg-card:hover,a.rg-card:active,a.rg-card:visited{color:inherit;text-
 .cal-mini .l{font-size:10px;font-weight:800;color:var(--t3);margin-top:4px}
 @media(max-width:700px){#notif-panel{left:auto;right:0;width:min(92vw,340px)}.cal-day{min-height:86px;padding:8px}.cal-grid,.cal-weekdays{gap:6px}.cal-num{font-size:12px}.cal-chip{font-size:9px;padding:3px 5px}}
 
+
+/* WhatsApp assistant */
+.wa-assistant-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr);gap:16px;margin:16px 0}
+.wa-assistant-card{background:rgba(15,23,42,.78);border:1px solid var(--brd);border-radius:20px;padding:20px;box-shadow:0 12px 30px rgba(0,0,0,.16)}
+.wa-assistant-card h3{font:900 16px 'Cairo',sans-serif;margin-bottom:8px}
+.wa-assistant-card p{color:var(--t2);font-size:13px;line-height:1.8}
+.wa-assistant-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.wa-assistant-field{display:flex;flex-direction:column;gap:6px;margin-top:13px}
+.wa-assistant-field label{font-size:12px;color:var(--t2);font-weight:800}
+.wa-assistant-field input,.wa-assistant-field textarea{width:100%;background:rgba(2,6,23,.65);border:1px solid var(--brd);border-radius:12px;padding:11px 13px;color:var(--t1);font:600 14px 'Tajawal',sans-serif;outline:none}
+.wa-assistant-field input:focus,.wa-assistant-field textarea:focus{border-color:var(--gr)}
+.wa-assistant-field textarea{min-height:92px;resize:vertical;line-height:1.7}
+.wa-assistant-status{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:99px;background:rgba(245,158,11,.12);color:#fcd34d;border:1px solid rgba(245,158,11,.24);font-size:12px;font-weight:900}
+.wa-assistant-note{margin-top:14px;padding:12px 14px;border-radius:13px;border:1px solid rgba(245,158,11,.24);background:rgba(245,158,11,.08);color:#fde68a;font-size:12px;line-height:1.8}
+.wa-reply-box{min-height:75px;padding:13px;border-radius:14px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);color:#d1fae5;line-height:1.8;font-size:14px;white-space:pre-wrap;margin-top:12px}
+@media(max-width:760px){.wa-assistant-grid{grid-template-columns:1fr}.wa-assistant-card{padding:16px}}
+
 </style>
 </head>
 <body>
@@ -1368,6 +1385,7 @@ a.rg-card,a.rg-card:hover,a.rg-card:active,a.rg-card:visited{color:inherit;text-
     <div class="sbn" onclick="nav('calendar',this)"><span class="ico">🗓️</span>التقويم<span class="bdg" id="nb-calendar">0</span></div>
     <div class="sbn" onclick="nav('rep',this)"><span class="ico">📋</span>التقارير</div>
     <div class="sbn" onclick="nav('orders',this)" style="border-top:1px solid rgba(255,255,255,0.08);margin-top:8px;padding-top:12px"><span class="ico">💬</span>أوامر الواتساب<span class="bdg" id="nb-orders">0</span></div>
+    <div class="sbn" onclick="nav('wa-assistant',this)"><span class="ico">🤖</span>مساعد واتساب AI</div>
     <div class="sbn" id="sb-agents-item" style="display:none;border-top:1px solid rgba(255,255,255,0.08);margin-top:8px;padding-top:8px" onclick="openAgentsMgr()">
       <span class="ico">👥</span>إدارة فريق العمل
     </div>
@@ -1653,6 +1671,32 @@ a.rg-card,a.rg-card:hover,a.rg-card:active,a.rg-card:visited{color:inherit;text-
       </div>
     </div>
     <div class="wo-grid" id="wo-grid"></div>
+  </div>
+  <!-- WHATSAPP AI ASSISTANT -->
+  <div class="pg" id="pg-wa-assistant">
+    <div class="wa-assistant-card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:linear-gradient(120deg,rgba(16,185,129,.13),rgba(15,23,42,.84));">
+      <div><h3 style="font-size:20px">🤖 مساعد واتساب Smell KSA</h3><p>افتح واتساب ويب من هنا، وجهّز ردوداً مقترحة للعملاء من لوحة النظام.</p></div>
+      <div class="wa-assistant-row" style="margin:0"><span class="wa-assistant-status">● غير مربوط بواتساب</span><button class="btn ba" style="background:linear-gradient(135deg,#25d366,#128c7e);color:#fff" onclick="openWhatsAppWeb()">💬 فتح WhatsApp Web</button></div>
+    </div>
+    <div class="wa-assistant-grid">
+      <section class="wa-assistant-card">
+        <h3>📝 تجربة اقتراح رد</h3>
+        <p>الصق رسالة العميل لتحصل على مسودة رد سريعة. هذه النسخة تجريبية وتستخدم قواعد محلية؛ لا تقرأ محادثات واتساب ولا ترسل الرسائل تلقائياً.</p>
+        <div class="wa-assistant-field"><label for="wa-test-phone">رقم العميل (اختياري لفتح المحادثة)</label><input id="wa-test-phone" type="tel" inputmode="tel" placeholder="05xxxxxxxx" dir="ltr"></div>
+        <div class="wa-assistant-field"><label for="wa-test-message">رسالة العميل</label><textarea id="wa-test-message" placeholder="مثال: السلام عليكم، كم سعر المنتج؟"></textarea></div>
+        <div class="wa-assistant-row"><button class="btn ba" onclick="waSuggestReply()">✨ اقترح رداً</button><button class="btn bo" onclick="waOpenCustomerChat()">↗ فتح محادثة العميل</button></div>
+        <div id="wa-reply-result" class="wa-reply-box" aria-live="polite">سيظهر الرد المقترح هنا…</div>
+        <div class="wa-assistant-row"><button class="btn bo bsm" onclick="waCopyReply()">📋 نسخ الرد</button></div>
+      </section>
+      <section class="wa-assistant-card">
+        <h3>⚙️ إعدادات المساعد</h3>
+        <p>خصص اسم النشاط ورسالة الترحيب. تُحفظ هذه الإعدادات على هذا المتصفح فقط.</p>
+        <div class="wa-assistant-field"><label for="wa-business-name">اسم النشاط</label><input id="wa-business-name" type="text" placeholder="Smell KSA"></div>
+        <div class="wa-assistant-field"><label for="wa-greeting">رسالة الترحيب</label><textarea id="wa-greeting" placeholder="أهلاً بك في Smell KSA 🌸 كيف نقدر نخدمك؟"></textarea></div>
+        <div class="wa-assistant-row"><button class="btn bg" onclick="saveWASettings()">💾 حفظ الإعدادات</button><button class="btn bo" onclick="waRequireOfficialSetup()">⚡ تفعيل الرد الآلي</button></div>
+        <div class="wa-assistant-note"><strong>مهم:</strong> الرد الآلي الحقيقي يحتاج ربطاً بخادم آمن وواجهة WhatsApp Business Cloud API وخدمة ذكاء اصطناعي. لا يمكن لصفحة الويب التحكم بمحادثات WhatsApp Web أو الرد نيابةً عنك. لم يتم تفعيل إرسال تلقائي في هذه النسخة.</div>
+      </section>
+    </div>
   </div>
   <!-- REPORTS -->
   <div class="pg" id="pg-rep"><div class="rcs" id="rcs"></div></div>
@@ -3005,8 +3049,56 @@ function closeSB(){
 }
 
 // ════ NAV ════
-var TT={home:'📊 الرئيسية',health:'🩺 فحص النظام',unsold:'🎯 أسماء العملاء',calls:'📞 سجل الاتصالات',calendar:'🗓️ التقويم',rep:'📋 التقارير',orders:'💬 أوامر الواتساب'};
-var PAGES = ['home','unsold','calls','calendar','rep','orders'];
+// WhatsApp Web launcher and safe, local reply-draft demo. This does not access WhatsApp chats.
+function openWhatsAppWeb(){ window.open('https://web.whatsapp.com/','_blank','noopener,noreferrer'); }
+function waNormalizePhone(value){
+  var digits=String(value||'').replace(/\D/g,'');
+  if(digits.indexOf('00')===0) digits=digits.slice(2);
+  if(digits.indexOf('0')===0) digits='966'+digits.slice(1);
+  else if(digits.length===9 && digits.charAt(0)==='5') digits='966'+digits;
+  return digits;
+}
+function waOpenCustomerChat(){
+  var phone=waNormalizePhone(document.getElementById('wa-test-phone').value);
+  if(!phone){ toast('أدخل رقم العميل أولاً (مثال: 05xxxxxxxx)',true); return; }
+  window.open('https://wa.me/'+phone,'_blank','noopener,noreferrer');
+}
+function waSuggestReply(){
+  var msg=(document.getElementById('wa-test-message').value||'').trim();
+  var result=document.getElementById('wa-reply-result');
+  if(!msg){ toast('اكتب رسالة العميل أولاً',true); return; }
+  var settings=readLSJSON('smellWASettings_v1',{}), name=settings.business||'Smell KSA', reply;
+  var text=msg.toLowerCase();
+  if(/السلام|مرحبا|مرحباً|اهلا|أهلا|هلا|hi|hello/.test(text)) reply=(settings.greeting||'أهلاً بك في '+name+' 🌸 كيف نقدر نخدمك؟');
+  else if(/سعر|كم|بكم|price|cost/.test(text)) reply='حياك الله 🌸 يسعدنا خدمتك! أرسل لنا اسم المنتج أو صورته والكمية المطلوبة، ونوافيك بالسعر والتفاصيل فوراً.';
+  else if(/توصيل|شحن|يوصل|delivery|shipping/.test(text)) reply='أكيد 🌸 فضلاً أرسل المدينة والمنتجات المطلوبة لنتأكد لك من خيارات ومدة التوصيل.';
+  else if(/طلب|اطلب|شراء|متوفر|availability|order/.test(text)) reply='يسعدنا طلبك 🌸 أرسل اسم المنتج والكمية ومدينة التوصيل، وفريقنا يساعدك بإتمام الطلب.';
+  else if(/شكرا|شكرًا|مشكور|thanks/.test(text)) reply='العفو، حاضرين دائماً 🌸 إذا احتجت أي مساعدة أخرى اكتب لنا.';
+  else reply='أهلاً بك في '+name+' 🌸 شكراً لتواصلك معنا. وضّح لنا طلبك أو أرسل اسم المنتج، وفريقنا بيرد عليك بأقرب وقت.';
+  result.textContent=reply;
+}
+function waCopyReply(){
+  var text=document.getElementById('wa-reply-result').textContent;
+  if(!text||text==='سيظهر الرد المقترح هنا…'){toast('أنشئ الرد أولاً',true);return;}
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function(){toast('تم نسخ الرد ✨');}).catch(function(){toast('تعذر النسخ تلقائياً؛ حدّد الرد وانسخه يدوياً',true);});
+  else {var el=document.createElement('textarea');el.value=text;document.body.appendChild(el);el.select();try{document.execCommand('copy');toast('تم نسخ الرد ✨');}catch(e){toast('تعذر النسخ؛ حدّد الرد وانسخه يدوياً',true);}el.remove();}
+}
+function loadWASettings(){
+  var settings=readLSJSON('smellWASettings_v1',{}), business=document.getElementById('wa-business-name'), greeting=document.getElementById('wa-greeting');
+  if(business) business.value=settings.business||'Smell KSA';
+  if(greeting) greeting.value=settings.greeting||'أهلاً بك في Smell KSA 🌸 كيف نقدر نخدمك؟';
+}
+function saveWASettings(){
+  var settings={business:(document.getElementById('wa-business-name').value||'Smell KSA').trim(),greeting:(document.getElementById('wa-greeting').value||'').trim()};
+  try{localStorage.setItem('smellWASettings_v1',JSON.stringify(settings));toast('تم حفظ إعدادات مساعد واتساب على هذا الجهاز 💾');}
+  catch(e){toast('تعذر حفظ الإعدادات في هذا المتصفح',true);}
+}
+function waRequireOfficialSetup(){
+  toast('الرد الآلي غير مفعّل: يلزم ربط WhatsApp Business Cloud API وخادم آمن أولاً',true);
+}
+
+var TT={home:'📊 الرئيسية',health:'🩺 فحص النظام',unsold:'🎯 أسماء العملاء',calls:'📞 سجل الاتصالات',calendar:'🗓️ التقويم',rep:'📋 التقارير',orders:'💬 أوامر الواتساب','wa-assistant':'🤖 مساعد واتساب AI'};
+var PAGES = ['home','unsold','calls','calendar','rep','orders','wa-assistant'];
 var curPage = 'home';
 
 function nav(id,el){
@@ -3021,6 +3113,7 @@ function nav(id,el){
   if(id==='health'){renderHealthScreen();}
   if(id==='rep'){setTimeout(refreshRCards,100);}
   if(id==='orders'){woRender(); woUpdateBadges();}
+  if(id==='wa-assistant'){loadWASettings();}
   curPage = id;
   // sync bottom nav
   document.querySelectorAll('.mbn').forEach(function(b){b.classList.remove('on');});
